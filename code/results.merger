@@ -1,0 +1,77 @@
+#!/bin/bash
+
+# fail whenever something is fishy, use -x to get verbose logfiles
+set -e -x
+
+# finalize FAIRly Big Workflow dataset
+
+dssource="$1"
+
+if [[ ! -z ${dssource} ]]; then
+  datalad clone "${dssource}" ds
+  cd ds
+else
+  datalad update -s mriqc_out
+fi
+
+# octopus merge job branches and move data to root
+git merge -m "Merge results" $(git branch -al | grep 'job_' | tr -d ' ')
+git mv mriqc/.bidsignore mriqc/* .
+datalad save -m "move data to dataset root"
+
+# clean git annex branch
+if [[ ! -z ${dssource} ]]; then
+  git annex fsck --fast
+else
+  git annex fsck -f mriqc_out --fast
+fi
+
+# declare local data clone as dead
+git annex dead here
+
+# datalad push merged results
+if [[ ! -z ${dssource} ]]; then
+  datalad push --data nothing
+else
+  datalad push --data nothing --to mriqc_out
+fi
+
+export DATALAD_GET_SUBDATASET__SOURCE__CANDIDATE__102container="ria+file:///p/data1/inm7/containerstores#{id}" REPRONIM_USE_DUCT=1 DUCT_OUTPUT_PREFIX="logs/duct/mriqc-group-stats_{datetime_filesafe}-{pid}_"
+
+# get mri input for MRIQC group stats
+datalad get -n sourcedata/raw
+datalad get sourcedata/raw/dataset_description.json \
+  $(find sourcedata/raw -maxdepth 3 -name anat) \
+  $(find sourcedata/raw -maxdepth 3 -name func) \
+  $(find sourcedata/raw -maxdepth 3 -name dwi)
+
+# run mriqc group stats
+datalad containers-run \
+  -m "Compute MRIQC group stats" \
+  -n bids-mriqc \
+  --explicit \
+  -o 'group*' \
+  -o .bidsignore \
+  mriqc sourcedata/raw . group \
+    --no-datalad-get \
+    --notrack \
+    --verbose \
+    --work-dir tmp
+
+datalad drop --what datasets --reckless kill -r -d sourcedata/raw
+
+# run mriqc quality classifier
+datalad containers-run \
+  -m "run MRIQC classifier" \
+  -n bids-mriqc-clf \
+  -i group_T1w.tsv \
+  "mriqc_clf --load-classifier -X group_T1w.tsv; \
+  mv mclf_run*data-unseen_pred.csv mclf_data-unseen_pred.csv"
+
+if [[ ! -z ${dssource} ]]; then
+  datalad push --data nothing
+else
+  datalad push --data nothing --to mriqc_out
+fi
+
+echo SUCCESS
