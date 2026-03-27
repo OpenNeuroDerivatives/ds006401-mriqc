@@ -3,3 +3,8 @@
 	url = https://github.com/ReproNim/containers.git
 	datalad-id = b02e63c2-62c1-11e9-82b0-52540040489c
 	datalad-url = https://github.com/ReproNim/containers.git
+[submodule "sourcedata/raw"]
+	path = sourcedata/raw
+	url = https://github.com/OpenNeuroDatasets/ds006401.git
+	datalad-id = e8ab6af7-8341-440b-b0bc-c75a0d48e5af
+	datalad-url = https://github.com/OpenNeuroDatasets/ds006401.git
