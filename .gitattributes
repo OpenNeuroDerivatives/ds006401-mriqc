@@ -2,3 +2,7 @@
 **/.git* annex.largefiles=nothing
 CHANGELOG.md annex.largefiles=nothing
 README.md annex.largefiles=nothing
+.bidsignore annex.largefiles=nothing
+* annex.largefiles=((mimeencoding=binary)and(largerthan=0))
+**/*.svg annex.largefiles=(anything)
+
