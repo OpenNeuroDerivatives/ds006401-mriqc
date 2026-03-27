@@ -1,0 +1,2 @@
+/opt/conda/lib/python3.11/site-packages/nilearn/plotting/displays/_slicers.py:420: UserWarning: empty mask
+  xmin_, xmax_, ymin_, ymax_, zmin_, zmax_ = get_mask_bounds(
