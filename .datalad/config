@@ -3,3 +3,6 @@
 [datalad "containers.bids-mriqc"]
 	image = code/containers/images/bids/bids-mriqc--24.0.2.sif
 	cmdexec = {img_dspath}/code/containers/scripts/singularity_cmd run {img} --no-datalad-get {cmd}
+[datalad "containers.bids-mriqc-clf"]
+	image = code/containers/images/bids/bids-mriqc--0.15.1.sing
+	cmdexec = {img_dspath}/code/containers/scripts/singularity_cmd run {img} --no-datalad-get {cmd}
