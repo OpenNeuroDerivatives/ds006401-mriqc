@@ -1,0 +1,124 @@
+#!/bin/bash
+
+# the job assumes that it is a good idea to run everything in PWD
+# the job manager should make sure that is true
+
+# fail whenever something is fishy, use -x to get verbose logfiles
+set -e -u -x
+
+dssource="$1"
+pushgitremote="$2"
+subid="$3"
+
+export DUCT_OUTPUT_PREFIX="duct-logs/${subid}_{datetime_filesafe}-{pid}."
+
+# get the analysis dataset, which includes the inputs as well
+# importantly, we do not clone from the lcoation that we want to push the
+# results too, in order to avoid too many jobs blocking access to
+# the same location and creating a throughput bottleneck
+datalad clone "${dssource}" ds
+
+# all following actions are performed in the context of the superdataset
+cd ds
+
+# in order to avoid accumulation temporary git-annex availability information
+# and to avoid a syncronization bottleneck by having to consolidate the
+# git-annex branch across jobs, we will only push the main tracking branch
+# back to the output store (plus the actual file content). Final availability
+# information can be establish via an eventual "git-annex fsck -f mriqc_out-storage".
+# this remote is never fetched, it accumulates a larger number of branches
+# and we want to avoid progressive slowdown. Instead we only ever push
+# a unique branch per each job (subject AND process specific name)
+git remote add outputstore "$pushgitremote"
+
+# all results of this job will be put into a dedicated branch
+git checkout -b "job_${JOBID}"
+
+# we pull down the input subject manually in order to discover relevant
+# files. We do this outside the recorded call, because on a potential
+# re-run we want to be able to do fine-grained recomputing of individual
+# outputs. The recorded calls will have specific paths that will enable
+# recomputation outside the scope of the original Condor setup
+datalad get -n "sourcedata/raw/"
+
+# setup annex cache for container dataset
+datalad get -n "code/containers"
+git -C code/containers remote add cache /p/scratch/icei-hbp-00000000004/STAGE/annex-cache
+git -C code/containers config remote.cache.annex-speculate-present true
+git -C code/containers config remote.cache.annex-cost 10
+git -C code/containers config remote.cache.annex-pull false
+git -C code/containers config remote.cache.annex-push false
+git -C code/containers config remote.cache.fetch do-not-fetch-from-this-remote:
+
+# the meat of the matter
+# look for T1w files in the input data for the given participant
+# it is critical for reproducibility that the command given to
+# "containers-run" does not rely on any property of the immediate
+# computational environment (env vars, services, etc)
+
+# do T1w first
+datalad containers-run \
+  -m "Compute MRIQC for T1w of ${subid}" \
+  -n bids-mriqc \
+  -i sourcedata/raw/${subid} \
+  -i sourcedata/raw/dataset_description.json \
+  mriqc sourcedata/raw mriqc participant \
+    --participant-label $subid \
+    --modalities T1w \
+    --no-datalad-get \
+    --no-sub \
+    --verbose \
+    --nprocs 8 \
+    --omp-nthreads 8 \
+    --mem 6000 \
+    --work-dir tmp \
+    --float32 \
+    --verbose-reports || true
+
+# do bold next
+datalad containers-run \
+  -m "Compute MRIQC for BOLD of ${subid}" \
+  -n bids-mriqc \
+  -i sourcedata/raw/${subid} \
+  -i sourcedata/raw/dataset_description.json \
+  mriqc sourcedata/raw mriqc participant \
+    --participant-label $subid \
+    --modalities bold \
+    --no-datalad-get \
+    --no-sub \
+    --verbose \
+    --nprocs 8 \
+    --omp-nthreads 8 \
+    --mem 6000 \
+    --work-dir tmp \
+    --float32 \
+    --min-bold-length 10 \
+    --verbose-reports || true
+
+# then run dwi seperately and continue after error
+datalad containers-run \
+  -m "Compute MRIQC for DWI of ${subid}" \
+  -n bids-mriqc \
+  -i sourcedata/raw/${subid} \
+  -i sourcedata/raw/dataset_description.json \
+  mriqc sourcedata/raw mriqc participant \
+    --participant-label $subid \
+    --modalities dwi \
+    --no-datalad-get \
+    --no-sub \
+    --verbose \
+    --nprocs 8 \
+    --omp-nthreads 8 \
+    --mem 6000 \
+    --work-dir tmp \
+    --float32 \
+    --min-dwi-length 6 \
+    --verbose-reports || true
+
+# file content first -- does not need a lock, no interaction with Git
+git annex copy -t outputstore
+# and the output branch
+flock --verbose $DSLOCKFILE git push outputstore
+
+echo "SUBJECT JOB COMPLETED"
+# job handler should clean up workspace
