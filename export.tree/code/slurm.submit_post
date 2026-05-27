@@ -1,0 +1,15 @@
+#!/bin/bash -x
+
+export JOBID=ds006401_postpro.${SLURM_JOB_ID} REPRONIM_USE_DUCT=1
+
+# use subject specific folder
+mkdir /local/nvme/${JOBID}
+cd /local/nvme/${JOBID}
+
+# run things
+/p/project1/icei-hbp-00000000004/QCworkflow/openneuro-qc/openneuro-mriqc_scraper/ds006401-mriqc/code/results.merger https://hub.trr379.de/f.hoffstaedter/ds006401-mriqc >/p/project1/icei-hbp-00000000004/QCworkflow/openneuro-qc/openneuro-mriqc_scraper/ds006401-mriqc/logs/${JOBID}.out 2>/p/project1/icei-hbp-00000000004/QCworkflow/openneuro-qc/openneuro-mriqc_scraper/ds006401-mriqc/logs/${JOBID}.err
+
+cd /local/nvme/
+chmod 777 -R /local/nvme/${JOBID}
+rm -fr /local/nvme/${JOBID}
+

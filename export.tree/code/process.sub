@@ -1,0 +1,41 @@
+#!/bin/bash
+
+subid="$1"
+
+executable=$(pwd)/code/participant_job
+
+# the job expects these environment variables for labeling and synchronization
+# - JOBID: subject AND process specific ID to make a branch name from
+#     (must be unique across all (even multiple) submissions)
+#     including the cluster ID will enable sorting multiple computing attempts
+# - DSLOCKFILE: lock (must be accessible from all compute jobs) to synchronize
+#     write access to the output dataset
+# - DATALAD_GET_SUBDATASET__SOURCE__CANDIDATE__...:
+#     (additional) locations for datalad to locate relevant subdatasets, in case
+#     a configured URL is outdated
+# - GIT_AUTHOR_...: Identity information used to save dataset changes in compute
+#     jobs
+export JOBID=${subid} \
+  DSLOCKFILE=$(pwd)/.condor_datalad_lock \
+  GIT_AUTHOR_NAME='Felix Hoffstaedter' \
+  GIT_AUTHOR_EMAIL='f.hoffstaedter@fz-juelich.de' \
+  REPRONIM_USE_DUCT=1
+
+# essential args for "participant_job"
+# 1: where to clone the analysis dataset
+# 2: location to push the result git branch to. The "ria+" prefix is stripped.
+# 3: ID of the subject to process
+arguments="ria+file:///p/project1/icei-hbp-00000000004/ria-qcworkflow/inputstore#ddb688bc-a176-4550-9e4a-4f1aa2ca3268 \
+  https://hub.trr379.de/f.hoffstaedter/ds006401-mriqc \
+  ${subid} \
+  "
+
+mkdir -p /local/nvme/tmp_${subid:4}
+cd /local/nvme/tmp_${subid:4}
+
+${executable} ${arguments} \
+> /p/project1/icei-hbp-00000000004/QCworkflow/openneuro-qc/openneuro-mriqc_scraper/ds006401-mriqc/logs/${subid}.out \
+2> /p/project1/icei-hbp-00000000004/QCworkflow/openneuro-qc/openneuro-mriqc_scraper/ds006401-mriqc/logs/${subid}.err
+
+chmod +w -R /local/nvme/tmp_${subid:4} && rm -rf /local/nvme/tmp_${subid:4}
+
